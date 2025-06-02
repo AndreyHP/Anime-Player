@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Anime Player</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    .video-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      margin: 20px auto;
+      display: none; /* Initially hidden */
+      background: black;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit:cover;
+      display: block;
+    }
+    .subtitle-container {
+      position: absolute;
+      bottom: 10%;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      color: white;
+      background: rgba(0, 0, 0, 0.0);
+      font-size: 45px;
+      font-family: Arial, sans-serif;
+      user-select: text;
+      pointer-events: auto;
+    }
+    .fullscreen-button {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.5);
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 10px;
+    }
+    .file-input-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      background: #f0f0f0;
+    }
+    .file-input-container input {
+      margin: 10px;
+      padding: 10px;
+    }
+    .file-input-container button {
+      margin: 10px;
+      padding: 10px 20px;
+      background: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    .file-input-container button:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <div id="fileInputContainer" class="file-input-container">
+    <input type="file" id="videoInput" accept="video/mp4" />
+    <input type="file" id="subtitleInput" accept=".vtt" />
+    <button id="loadButton">Load Video and Subtitles</button>
+  </div>
+  <div id="videoContainer" class="video-container">
+    <button id="fullscreenBtn" class="fullscreen-button">Fullscreen</button>
+    <video id="animeVideo" controls>
+      Your browser does not support the video tag.
+    </video>
+    <div id="subtitleDisplay" class="subtitle-container"></div>
+  </div>
+
+  <script>
+    const fileInputContainer = document.getElementById("fileInputContainer");
+    const videoContainer = document.getElementById("videoContainer");
+    const videoInput = document.getElementById("videoInput");
+    const subtitleInput = document.getElementById("subtitleInput");
+    const loadButton = document.getElementById("loadButton");
+    const video = document.getElementById("animeVideo");
+    const subtitleDisplay = document.getElementById("subtitleDisplay");
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
+    let subtitles = [];
+
+    // Handle custom fullscreen button
+    fullscreenBtn.addEventListener("click", function () {
+      if (!document.fullscreenElement) {
+        if (videoContainer.requestFullscreen) {
+          videoContainer.requestFullscreen();
+        } else if (videoContainer.webkitRequestFullscreen) {
+          videoContainer.webkitRequestFullscreen();
+        } else if (videoContainer.msRequestFullscreen) {
+          videoContainer.msRequestFullscreen();
+        }
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+        }
+      }
+    });
+
+    // Handle load button click
+    loadButton.addEventListener("click", function () {
+      const videoFile = videoInput.files[0];
+      const subtitleFile = subtitleInput.files[0];
+
+      if (!videoFile || !subtitleFile) {
+        alert("Please select both a video and a subtitle file.");
+        return;
+      }
+
+      // Load video
+      const videoURL = URL.createObjectURL(videoFile);
+      video.src = videoURL;
+      video.type = videoFile.type;
+
+      // Load subtitles
+      const subtitleReader = new FileReader();
+      subtitleReader.onload = function (e) {
+        try {
+          subtitles = parseVTT(e.target.result);
+          console.log("Subtitles loaded:", subtitles);
+          // Show video container and hide file input
+          videoContainer.style.display = "block";
+          fileInputContainer.style.display = "none";
+        } catch (error) {
+          console.error("Error parsing VTT file:", error);
+          subtitleDisplay.innerHTML = "Failed to load subtitles";
+        }
+      };
+      subtitleReader.onerror = function () {
+        console.error("Error reading subtitle file");
+        subtitleDisplay.innerHTML = "Failed to load subtitles";
+      };
+      subtitleReader.readAsText(subtitleFile);
+    });
+
+    // Parse WebVTT file into an array of subtitle objects
+    function parseVTT(vttText) {
+      const blocks = vttText.replace(/\r\n/g, "\n").split(/\n\n+/);
+      const subs = [];
+      blocks.forEach(block => {
+        const lines = block.trim().split("\n");
+        if (!lines.length || lines[0].startsWith("WEBVTT")) {
+          return;
+        }
+        const timeLine = lines.find(line => line.includes("-->"));
+        if (!timeLine) return;
+        const [start, end] = timeLine.split("-->").map(s => s.trim());
+        const text = lines.slice(lines.indexOf(timeLine) + 1).join(" ");
+        subs.push({
+          start: timeToSeconds(start),
+          end: timeToSeconds(end),
+          text: text,
+        });
+      });
+      return subs;
+    }
+
+    // Convert VTT time format to seconds
+    function timeToSeconds(time) {
+      const parts = time.split(":");
+      let seconds = 0;
+      if (parts.length === 3) {
+        seconds = parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2].replace(",", "."));
+      } else if (parts.length === 2) {
+        seconds = parseFloat(parts[0]) * 60 + parseFloat(parts[1].replace(",", "."));
+      }
+      return seconds;
+    }
+
+    // Update subtitles based on current video time
+    video.addEventListener("timeupdate", () => {
+      const currentTime = video.currentTime;
+      const currentSub = subtitles.find(sub => currentTime >= sub.start && currentTime <= sub.end);
+      subtitleDisplay.innerHTML = currentSub ? currentSub.text : "";
+    });
+  </script>
+</body>
+</html>
